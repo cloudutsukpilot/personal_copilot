@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python virtual environment
+venv/
+.env/
+.venv/
+ENV/
+env/
+
+# Flask cache and debug files
+instance/
+*.log
+
+# MacOS / Windows / Linux system files
+.DS_Store
+Thumbs.db
+
+# VS Code / PyCharm
+.vscode/
+.idea/
+
+# pip tools and lock files
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Audio chunks (optional: if you're writing temp WAV files)
+audio_chunks/
+*.wav
+
+# Ignore any secrets file if added
+.env.local
+secrets.json
+
+# Node/WebSocket build artifacts (if applicable in future)
+node_modules/
+dist/
+build/

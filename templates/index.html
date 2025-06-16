@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Whisper Live Transcription</title>
+    <script>
+        let polling = false;
+
+        function startTranscription() {
+            fetch('/start')
+                .then(() => {
+                    polling = true;
+                    pollTranscription();
+                });
+        }
+
+        function stopTranscription() {
+            fetch('/stop').then(() => polling = false);
+        }
+
+        function pollTranscription() {
+            if (!polling) return;
+            fetch('/get_transcript')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('output').innerText = data.text;
+                    setTimeout(pollTranscription, 2000); // every 2s
+                });
+        }
+
+        function loadDevices() {
+            fetch('/devices')
+                .then(res => res.json())
+                .then(devices => {
+                    const select = document.getElementById('deviceSelect');
+                    devices.forEach(dev => {
+                        const option = document.createElement('option');
+                        option.value = dev.index;
+                        option.text = dev.name;
+                        select.appendChild(option);
+                    });
+                });
+        }
+
+        function startWithDevice() {
+            const device = document.getElementById('deviceSelect').value;
+            fetch('/start?device=' + device)
+                .then(() => {
+                    polling = true;
+                    pollTranscription();
+                });
+        }
+
+        window.onload = loadDevices;
+    </script>
+</head>
+<body>
+    <h1>🎙️ Whisper Real-Time Transcription</h1>
+    <select id="deviceSelect"></select>
+    <button onclick="startTranscription()">Start</button>
+    <button onclick="stopTranscription()">Stop</button>
+    <a href="/download" target="_blank">
+        <button>Download Transcript</button>
+    </a>
+    <pre id="output" style="white-space: pre-wrap; background: #f0f0f0; padding: 1em; height: 300px; overflow-y: scroll;"></pre>
+</body>
+</html>
