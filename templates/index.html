@@ -1,31 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Whisper Live Transcription</title>
+    <title>Whisper Real-Time Transcription</title>
+    <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        button { margin-right: 1em; }
+        #output {
+            white-space: pre-wrap;
+            background: #f0f0f0;
+            padding: 1em;
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            margin-top: 1em;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎙️ Whisper Real-Time Transcription</h1>
+    <label for="deviceSelect">Select Input Device:</label>
+    <select id="deviceSelect"></select>
+    <button onclick="startWithDevice()">Start</button>
+    <button onclick="stopTranscription()">Stop</button>
+    <a href="/download" target="_blank"><button>Download Transcript</button></a>
+    <pre id="output"></pre>
+
     <script>
-        let polling = false;
-
-        function startTranscription() {
-            fetch('/start')
-                .then(() => {
-                    polling = true;
-                    pollTranscription();
-                });
-        }
-
-        function stopTranscription() {
-            fetch('/stop').then(() => polling = false);
-        }
-
-        function pollTranscription() {
-            if (!polling) return;
-            fetch('/get_transcript')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('output').innerText = data.text;
-                    setTimeout(pollTranscription, 2000); // every 2s
-                });
-        }
+        let socket = null;
 
         function loadDevices() {
             fetch('/devices')
@@ -43,24 +45,44 @@
 
         function startWithDevice() {
             const device = document.getElementById('deviceSelect').value;
+            console.log("🎛️ Selected device:", device);
+            
+            connectSocket();  // ✅ Connect socket BEFORE starting backend
+
             fetch('/start?device=' + device)
                 .then(() => {
-                    polling = true;
-                    pollTranscription();
+                    console.log("🚀 Backend started");
                 });
+        }
+
+        function connectSocket() {
+            socket = io({ transports: ['polling'] });
+            const output = document.getElementById('output');
+
+            socket.on('connect', () => console.log("✅ WebSocket connected"));
+            socket.on('disconnect', () => console.log("❌ WebSocket disconnected"));
+
+            socket.on('transcription', function(data) {
+                console.log("📝 Received:", data.text);
+                output.innerText += '\n' + data.text;
+                output.scrollTop = output.scrollHeight;
+            });
+
+            socket.on('connect_error', (err) => {
+                console.error("WebSocket connection failed:", err);
+            });
+        }
+
+        function stopTranscription() {
+            fetch('/stop').then(() => {
+                if (socket) {
+                    socket.disconnect();
+                    socket = null;
+                }
+            });
         }
 
         window.onload = loadDevices;
     </script>
-</head>
-<body>
-    <h1>🎙️ Whisper Real-Time Transcription</h1>
-    <select id="deviceSelect"></select>
-    <button onclick="startTranscription()">Start</button>
-    <button onclick="stopTranscription()">Stop</button>
-    <a href="/download" target="_blank">
-        <button>Download Transcript</button>
-    </a>
-    <pre id="output" style="white-space: pre-wrap; background: #f0f0f0; padding: 1em; height: 300px; overflow-y: scroll;"></pre>
 </body>
 </html>
