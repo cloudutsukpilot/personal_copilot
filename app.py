@@ -1,6 +1,7 @@
 import requests
 OLLAMA_URL = "http://localhost:11434/api/generate" 
 
+from transcriber import query_mistral
 from threading import Thread
 from flask import Flask, render_template, jsonify, request, Response, redirect, url_for
 from flask_socketio import SocketIO, emit
@@ -95,7 +96,25 @@ def shutdown_handler(signum, frame):
 # Register Ctrl+C handler
 signal.signal(signal.SIGINT, shutdown_handler)
 
+@app.route('/duration')
+def get_duration():
+    return jsonify({"duration": transcriber.get_elapsed_time()})
+
+
+@app.route('/generate-summary', methods=['POST'])
+def generate_summary():
+    data = request.get_json()
+    prompt = data.get('prompt')
+
+    if not prompt:
+        return jsonify({"error": "No prompt provided"}), 400
+
+    print(f"📝 Generating summary for prompt: {prompt}", flush=True)
+    result = query_mistral(prompt)
+    return jsonify({"summary": result})
 
 if __name__ == '__main__':
     print("🚀 Starting Whisper WebSocket Server at http://localhost:5000", flush=True)
     socketio.run(app, host='0.0.0.0', port=5000)
+
+

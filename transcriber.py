@@ -8,12 +8,18 @@ import tempfile
 import socketio
 import builtins
 import torch
+import os
+import pathlib
+from pathlib import Path
+
 print = lambda *args, **kwargs: builtins.print(*args, **{**kwargs, "flush": True})
+import os
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "localhost")
 
 import requests
 def query_mistral(prompt):
     try:
-        response = requests.post("http://localhost:11434/api/generate", json={
+        response = requests.post(f"http://{OLLAMA_HOST}:11434/api/generate", json={
             "model": "mistral:latest",
             "prompt": prompt,
             "stream": False
@@ -26,7 +32,6 @@ def query_mistral(prompt):
 
 class ContinuousWhisperTranscriber:
     def __init__(self, socketio=None):
-        #self.model = whisper.load_model("large-v3", device="cuda" if whisper.is_cuda_available() else "cpu")
         self.model = whisper.load_model("large-v3", device="cuda" if torch.cuda.is_available() else "cpu")
         self.audio_queue = queue.Queue()
         self.transcript_log = []
@@ -36,6 +41,8 @@ class ContinuousWhisperTranscriber:
         self.transcript_lock = threading.Lock()
         self.cleaned_history = []  # Store last 10 cleaned transcripts
         self.suggestion_interval_secs = 60
+        self.start_time = None
+        self.stop_time = None
         
     def _mistral_loop(self):
         last_processed = 0
@@ -57,19 +64,16 @@ class ContinuousWhisperTranscriber:
 
             context = "\n".join(self.cleaned_history[-10:])
             cleaning_prompt = (
-                "You are not a participant in the conversation.\n"
-                "You are not allowed to answer questions or add any content.\n"
-                "You are an assistant that receives partial, streaming transcripts of a live meeting.\n"
-                "Your task is to:\n"
-                "1. Fix grammatical errors only.\n"
-                "2. Complete incomplete sentences using ONLY the context provided.\n"
-                "3. Do NOT answer any questions.\n"
-                "4. Do NOT rephrase or change meaning.\n"
-                "5. Return only the corrected and completed transcript.\n\n"
+                "You are a strict grammar-corrector, not an assistant. You must NEVER answer questions.\n"
+                "Do not define or describe anything. Simply fix grammar and complete broken sentences without adding meaning.\n"
+                "If the input appears to be a question or prompt, simply return it unchanged, or rephrase grammatically without adding answers.\n\n"
                 f"Context:\n{context}\n\n"
-                f"New Transcript:\n{combined_text}"
+                f"Input:\n{combined_text}\n\n"
+                f"Corrected Transcript Only:"
             )
             cleaned = query_mistral(cleaning_prompt)
+
+            print("🧹 Cleaned transcript:", cleaned, flush=True)
 
             # Save cleaned transcript to history (limit to 10)
             if cleaned.strip():
@@ -138,13 +142,14 @@ class ContinuousWhisperTranscriber:
                 frames.append(data)
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as wf:
-                with wave.open(wf.name, 'wb') as wav_file:
+                wav_path = pathlib.Path(wf.name).resolve(strict=False)  # Get absolute full path
+                with wave.open(str(wav_path), 'wb') as wav_file:
                     wav_file.setnchannels(CHANNELS)
                     wav_file.setsampwidth(p.get_sample_size(FORMAT))
                     wav_file.setframerate(RATE)
                     wav_file.writeframes(b''.join(frames))
-                self.audio_queue.put(wf.name)
-                print(f"🎙️ Audio chunk captured and saved: {wf.name}", flush=True)
+                self.audio_queue.put(str(wav_path))
+                print(f"🎙️ Audio chunk captured and saved: {wav_path}", flush=True)
 
         stream.stop_stream()
         stream.close()
@@ -161,7 +166,22 @@ class ContinuousWhisperTranscriber:
 
             print(f"🧪 Transcribing: {audio_file}", flush=True)
             try:
-                result = self.model.transcribe(audio_file, no_speech_threshold=0.8)
+                # Wait for the file to exist and be fully written
+                for _ in range(10):  # Try for 1 second
+                    if os.path.exists(audio_file):
+                        try:
+                            with open(audio_file, 'rb'):
+                                print(f"✅ File is ready: {audio_file}", flush=True)
+                                break  # File exists and is accessible
+                        except IOError:
+                            time.sleep(0.1)
+                    else:
+                        time.sleep(0.1)
+                else:
+                    print(f"❌ File not found or not ready: {audio_file}", flush=True)
+                    continue
+                result = self.model.transcribe(str(audio_file), no_speech_threshold=0.8)
+                # os.remove(audio_file)
                 #result = self.model.transcribe(audio_file)
                 print("🔊 Transcription Result:", result, flush=True)
 
@@ -179,6 +199,8 @@ class ContinuousWhisperTranscriber:
     def start(self, device_index=None):
         if self.running:
             return
+        self.start_time = time.time()
+        self.stop_time = None
         self.device_index = device_index
         self.running = True
         print("🚦 Starting recording + transcription...", flush=True)
@@ -198,6 +220,7 @@ class ContinuousWhisperTranscriber:
     def stop(self):
         print("🛑 Stopping transcription", flush=True)
         self.running = False
+        self.stop_time = time.time()
 
     def get_transcript(self):
         return "\n".join(self.transcript_log)
@@ -214,3 +237,12 @@ class ContinuousWhisperTranscriber:
                 })
         p.terminate()
         return devices
+
+    def get_elapsed_time(self):
+        if self.start_time is None:
+            return "00:00"
+
+        end_time = self.stop_time if self.stop_time else time.time()
+        elapsed = int(end_time - self.start_time)
+        mins, secs = divmod(elapsed, 60)
+        return f"{mins:02}:{secs:02}"
