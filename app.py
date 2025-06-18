@@ -1,3 +1,6 @@
+import requests
+OLLAMA_URL = "http://localhost:11434/api/generate" 
+
 from threading import Thread
 from flask import Flask, render_template, jsonify, request, Response, redirect, url_for
 from flask_socketio import SocketIO, emit
@@ -13,6 +16,7 @@ from flask import request
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 transcriber = ContinuousWhisperTranscriber(socketio)
+
 
 @app.route('/')
 def index():

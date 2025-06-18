@@ -6,7 +6,7 @@
     <style>
         body { font-family: sans-serif; margin: 2em; }
         button { margin-right: 1em; }
-        #output {
+        .output-box {
             white-space: pre-wrap;
             background: #f0f0f0;
             padding: 1em;
@@ -19,13 +19,25 @@
 </head>
 <body>
     <h1>🎙️ Whisper Real-Time Transcription</h1>
+
     <label for="deviceSelect">Select Input Device:</label>
     <select id="deviceSelect"></select>
     <button onclick="startWithDevice()">Start</button>
     <button onclick="stopTranscription()">Stop</button>
     <button onclick="exitApp()">Exit</button>
     <a href="/download" target="_blank"><button>Download Transcript</button></a>
-    <pre id="output"></pre>
+
+    <!-- Whisper Raw Transcript -->
+    <h2>📝 Raw Transcript (Whisper)</h2>
+    <pre id="output" class="output-box"></pre>
+
+    <!-- Mistral Cleaned Transcript -->
+    <h2>✅ Cleaned Transcript (Mistral)</h2>
+    <pre id="mistralTranscript" class="output-box"></pre>
+
+    <!-- Mistral Suggestions -->
+    <h2>💡 Suggestions (Mistral)</h2>
+    <pre id="mistralSuggestions" class="output-box"></pre>
 
     <script>
         let socket = null;
@@ -47,26 +59,39 @@
         function startWithDevice() {
             const device = document.getElementById('deviceSelect').value;
             console.log("🎛️ Selected device:", device);
-            
-            connectSocket();  // ✅ Connect socket BEFORE starting backend
+
+            connectSocket(); // Connect WebSocket before starting backend
 
             fetch('/start?device=' + device)
-                .then(() => {
-                    console.log("🚀 Backend started");
-                });
+                .then(() => console.log("🚀 Backend started"));
         }
 
         function connectSocket() {
             socket = io({ transports: ['polling'] });
+
             const output = document.getElementById('output');
+            const mistralTranscript = document.getElementById('mistralTranscript');
+            const mistralSuggestions = document.getElementById('mistralSuggestions');
 
             socket.on('connect', () => console.log("✅ WebSocket connected"));
             socket.on('disconnect', () => console.log("❌ WebSocket disconnected"));
 
             socket.on('transcription', function(data) {
                 console.log("📝 Received:", data.text);
-                output.innerText += '\n' + data.text;
+                output.innerText += data.text;
                 output.scrollTop = output.scrollHeight;
+            });
+
+            socket.on('mistral_transcript', function(data) {
+                console.log("📘 Cleaned:", data.text);
+                mistralTranscript.innerText += data.text;
+                mistralTranscript.scrollTop = mistralTranscript.scrollHeight;
+            });
+
+            socket.on('mistral_suggestions', function(data) {
+                console.log("💡 Suggestion:", data.text);
+                mistralSuggestions.innerText += '\n• ' + data.text;
+                mistralSuggestions.scrollTop = mistralSuggestions.scrollHeight;
             });
 
             socket.on('connect_error', (err) => {
@@ -87,7 +112,6 @@
             if (!confirm("Are you sure you want to stop recording and exit?")) return;
 
             const download = confirm("Do you want to download the transcript before exiting?");
-
             if (download) {
                 const link = document.createElement('a');
                 link.href = '/download';
@@ -97,15 +121,11 @@
                 document.body.removeChild(link);
             }
 
-            // Small delay to allow download to trigger before stopping the backend
             setTimeout(() => {
                 fetch('/exit')
-                    .then(() => {
-                        window.location.href = "/goodbye";
-                    });
-            }, 1000); // 1 second delay to ensure download begins
+                    .then(() => window.location.href = "/goodbye");
+            }, 1000);
         }
-
 
         window.onload = loadDevices;
     </script>

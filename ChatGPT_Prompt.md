@@ -1,22 +1,31 @@
 
-I am trying to create an python web based app which will listen to the audio calls and transcribe it into text using whisper openai model running locally (ref: https://github.com/openai/whisper ). The web ui should have a start button and a box to show transcribed output as processed.
-
-Next Step is to send the transcribed output to a local mistral model as input, understand the conversation and add points during the call as if it is part of the call. Also, once i stop the transcription, it should use all the transcribe text and generate a summary, next action items and update to a database.
-
-The web app should also provide a interface/text block to add the prompt/memory context before the start of the call, so that mistral model is aware and accordingly provide suggestions or recommendations during the call. 
+I am trying to create an python web based app which will listen to the audio calls, transcribe it into text using whisper openai model running locally (ref: https://github.com/openai/whisper ) and provide realtime suggestions as a intelligent human who is part of that call. 
 
 ✅ Project Goals
 
  - Web UI with a Start button
    - Add microphone selector or upload audio file option - Completed
- - Stream audio input from the mic (or other source) - Completed
- - Continuously transcribe using OpenAI Whisper (local model) - Completed
+   - Add start, stop button to start and stop recording/transcribing - Completed
+   - Add option to download the transcript - Completed
+   - Add exit button to stop the transcribing and flask server - Completed
+   - Add 3 output boxes - raw whisper transcribed text, transcribe text from mistral model and suggestions from mistral model - Completed
+   - Button to refresh the audio devices - Pending
+ - Streaming
+   - Stream audio input from the mic (or other source) - Completed
+   - Continuously transcribe using OpenAI Whisper (local model) - Completed
+   - Use WebSockets for live updates - Completed
    - Add speaker diarization or timestamping - Pending
-   - Use WebSockets for live updates - Pending
- - Stream the transcribed text to the browser live - Completed
-   - Save transcripts to Database - Pending
-- Package as desktop app
-- Add "record session" + save transcript to file?
+   - Stream the transcribed text to the browser live - Completed
+   
+- Query Mistral API endpoint to
+  - Transcribe the text into gramatically correct and complete sentences - Completed
+  - Based on the transcribed text, provide promt + transcribe text to mistral to provide realtime suggestions - Pending
+  - Generate summary, action items and next plan by sending all the transcript text to mistral model.  - Pending
+- Local Database:
+  - Create tables which will contains the notes from meetings grouped by a specific topic/project - Pending
+  - Create tables which will contains the projects goals and task and their status - Pending
+  - Save transcripts to Database - Pending
+
 
 📁 Folder Structure
 
@@ -33,5 +42,6 @@ whisper_transcriber/
 ```
 
 
-- I am currently using base model for whisperai, which is not transcribing the english in indian accent. Which model should i use to better transcription?  The transcription Please keep this context in memery as the following questions will be related to this project.
+- Please keep this context in memery as the following questions will be related to this project. 
+- Question: The transcribed text from mistral model is being passed to mistral model and suggestion are returned. Suggestions are also being printed to the console output, but not to the web UI
 
