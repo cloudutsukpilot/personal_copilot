@@ -33,5 +33,5 @@ whisper_transcriber/
 ```
 
 
-- Please scan the files for the python code written for this app and provide steps to change the polling to websockets for live updates. Please keep this context in memery as the following questions will be related to this project.
+- I am currently using base model for whisperai, which is not transcribing the english in indian accent. Which model should i use to better transcription?  The transcription Please keep this context in memery as the following questions will be related to this project.
 

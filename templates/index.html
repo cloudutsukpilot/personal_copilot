@@ -23,6 +23,7 @@
     <select id="deviceSelect"></select>
     <button onclick="startWithDevice()">Start</button>
     <button onclick="stopTranscription()">Stop</button>
+    <button onclick="exitApp()">Exit</button>
     <a href="/download" target="_blank"><button>Download Transcript</button></a>
     <pre id="output"></pre>
 
@@ -81,6 +82,30 @@
                 }
             });
         }
+
+        function exitApp() {
+            if (!confirm("Are you sure you want to stop recording and exit?")) return;
+
+            const download = confirm("Do you want to download the transcript before exiting?");
+
+            if (download) {
+                const link = document.createElement('a');
+                link.href = '/download';
+                link.download = 'transcript.txt';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            // Small delay to allow download to trigger before stopping the backend
+            setTimeout(() => {
+                fetch('/exit')
+                    .then(() => {
+                        window.location.href = "/goodbye";
+                    });
+            }, 1000); // 1 second delay to ensure download begins
+        }
+
 
         window.onload = loadDevices;
     </script>

@@ -11,7 +11,7 @@ print = lambda *args, **kwargs: builtins.print(*args, **{**kwargs, "flush": True
 
 class ContinuousWhisperTranscriber:
     def __init__(self, socketio=None):
-        self.model = whisper.load_model("base")
+        self.model = whisper.load_model("large-v3")
         self.audio_queue = queue.Queue()
         self.transcript_log = []
         self.running = False
@@ -70,6 +70,7 @@ class ContinuousWhisperTranscriber:
 
                 if result['text'].strip():
                     print("📡 Emitting to WebSocket:", result['text'], flush=True)
+                    self.transcript_log.append(result['text'])
                     self.socketio.emit('transcription', {'text': result['text']})
                     print("✅ Emit completed", flush=True)
                 else:
