@@ -11,6 +11,7 @@ import torch
 import os
 import pathlib
 from pathlib import Path
+from config import debug_print
 
 print = lambda *args, **kwargs: builtins.print(*args, **{**kwargs, "flush": True})
 import os
@@ -27,7 +28,7 @@ def query_mistral(prompt):
         response.raise_for_status()
         return response.json()["response"]
     except Exception as e:
-        print(f"⚠️ Mistral query failed: {e}")
+        debug_print(f"⚠️ Mistral query failed: {e}")
         return "⚠️ Mistral failed"
 
 class ContinuousWhisperTranscriber:
@@ -40,10 +41,14 @@ class ContinuousWhisperTranscriber:
         self.socketio = socketio
         self.transcript_lock = threading.Lock()
         self.cleaned_history = []  # Store last 10 cleaned transcripts
-        self.suggestion_interval_secs = 60
+        self.suggestion_interval_secs = 30
         self.start_time = None
         self.stop_time = None
-        
+        self.initial_prompt = ""
+
+    def set_initial_prompt(self, prompt: str):
+        self.initial_prompt = prompt.strip()
+
     def _mistral_loop(self):
         last_processed = 0
         while self.running:
@@ -60,7 +65,7 @@ class ContinuousWhisperTranscriber:
             if not combined_text:
                 continue
 
-            print("🧠 Sending to Mistral:", combined_text)
+            debug_print("🧠 Sending to Mistral:", combined_text)
 
             context = "\n".join(self.cleaned_history[-10:])
             cleaning_prompt = (
@@ -73,7 +78,7 @@ class ContinuousWhisperTranscriber:
             )
             cleaned = query_mistral(cleaning_prompt)
 
-            print("🧹 Cleaned transcript:", cleaned, flush=True)
+            debug_print("🧹 Cleaned transcript:", cleaned, flush=True)
 
             # Save cleaned transcript to history (limit to 10)
             if cleaned.strip():
@@ -81,12 +86,12 @@ class ContinuousWhisperTranscriber:
                 if len(self.cleaned_history) > 10:
                     self.cleaned_history = self.cleaned_history[-10:]
             
-            print("💬 Cleaned transcript from Mistral:", cleaned, flush=True)
+            debug_print("💬 Cleaned transcript from Mistral:", cleaned, flush=True)
 
             try:
                 self.socketio.emit('mistral_transcript', {'text': cleaned})
             except KeyError:
-                print("⚠️ WebSocket session closed before message could be delivered.")
+                debug_print("⚠️ WebSocket session closed before message could be delivered.")
 
     def _periodic_suggestions_loop(self):
         while self.running:
@@ -97,27 +102,35 @@ class ContinuousWhisperTranscriber:
 
             # Take last 10 cleaned entries
             recent_cleaned = "\n".join(self.cleaned_history[-10:])
-            print("📊 Generating periodic suggestions for last 10 cleaned entries")
+            debug_print("📊 Generating periodic suggestions for last 10 cleaned entries")
 
             suggestion_prompt = (
-                "You are a Principal DevOps Engineer assistant analyzing a running transcript of a meeting.\n"
+                "You are a Principal DevOps Engineer assistant analyzing a running transcript of a meeting. You are giving an initial context to understand the overall goal of the meeting. \n"
                 "Based on the last few cleaned transcripts, you need to understand  the context, watch out for any questions, etc. and then provide answers, any best practices/recommendations or insightful responses that a participant can give.\n"
                 "Keep the sentences summarized and short, unless the answers to the question requires specific details or if it a code snippet.\n"
                 "Keep the tone helpful and context-aware.\n\n"
                 f"Transcript:\n{recent_cleaned}"
             )
 
+            # Include initial prompt if set
+            debug_print(" Initial prompt:", self.initial_prompt, flush=True)
+            if self.initial_prompt:
+                suggestion_prompt += f"Context:\n{self.initial_prompt}\n\n"
+
+            suggestion_prompt += f"Transcript:\n{recent_cleaned}"
+            debug_print("🧠 Sending periodic suggestions to Mistral:", suggestion_prompt, flush=True)
+
             result = query_mistral(suggestion_prompt)
 
             formatted_result = f"\n\n--- New Suggestions @ {time.strftime('%H:%M:%S')} ---\n{result.strip()}\n"
-            print("💡 Raw suggestions from Mistral:", formatted_result, flush=True)
+            debug_print("💡 Raw suggestions from Mistral:", formatted_result, flush=True)
 
-            print("🧠 Periodic Suggestions:", formatted_result)
+            debug_print("🧠 Periodic Suggestions:", formatted_result)
 
             try:
                 self.socketio.emit('mistral_suggestions', {'text': formatted_result})
             except KeyError:
-                print("⚠️ WebSocket session closed before message could be delivered.")
+                debug_print("⚠️ WebSocket session closed before message could be delivered.")
 
     def _record_loop(self):
         CHUNK = 1024
@@ -131,7 +144,7 @@ class ContinuousWhisperTranscriber:
                         input=True, input_device_index=self.device_index,
                         frames_per_buffer=CHUNK)
 
-        print("🎤 Recording thread started...", flush=True)
+        debug_print("🎤 Recording thread started...", flush=True)
 
         while self.running:
             frames = []
@@ -149,7 +162,7 @@ class ContinuousWhisperTranscriber:
                     wav_file.setframerate(RATE)
                     wav_file.writeframes(b''.join(frames))
                 self.audio_queue.put(str(wav_path))
-                print(f"🎙️ Audio chunk captured and saved: {wav_path}", flush=True)
+                debug_print(f"🎙️ Audio chunk captured and saved: {wav_path}", flush=True)
 
         stream.stop_stream()
         stream.close()
@@ -157,44 +170,43 @@ class ContinuousWhisperTranscriber:
         time.sleep(0.05)
 
     def _transcribe_loop(self):
-        print("🧠 Transcription thread started...", flush=True)
+        debug_print("🧠 Transcription thread started...", flush=True)
         while self.running:
             try:
                 audio_file = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
 
-            print(f"🧪 Transcribing: {audio_file}", flush=True)
+            debug_print(f"🧪 Transcribing: {audio_file}", flush=True)
             try:
                 # Wait for the file to exist and be fully written
                 for _ in range(10):  # Try for 1 second
                     if os.path.exists(audio_file):
                         try:
                             with open(audio_file, 'rb'):
-                                print(f"✅ File is ready: {audio_file}", flush=True)
+                                debug_print(f"✅ File is ready: {audio_file}", flush=True)
                                 break  # File exists and is accessible
                         except IOError:
                             time.sleep(0.1)
                     else:
                         time.sleep(0.1)
                 else:
-                    print(f"❌ File not found or not ready: {audio_file}", flush=True)
+                    debug_print(f"❌ File not found or not ready: {audio_file}", flush=True)
                     continue
-                result = self.model.transcribe(str(audio_file), no_speech_threshold=0.8)
-                # os.remove(audio_file)
-                #result = self.model.transcribe(audio_file)
-                print("🔊 Transcription Result:", result, flush=True)
+                result = self.model.transcribe(str(audio_file), no_speech_threshold=0.9, language="en")
+                os.remove(audio_file)  # Clean up the audio file after processing
+                debug_print("🔊 Transcription Result:", result, flush=True)
 
                 if result['text'].strip():
-                    print("📡 Emitting to WebSocket:", result['text'], flush=True)
+                    debug_print("📡 Emitting to WebSocket:", result['text'], flush=True)
                     with self.transcript_lock:
                         self.transcript_log.append(result['text'])
                     self.socketio.emit('transcription', {'text': result['text']})
-                    print("✅ Emit completed", flush=True)
+                    debug_print("✅ Emit completed", flush=True)
                 else:
-                    print("🕳️ No speech detected.", flush=True)
+                    debug_print("🕳️ No speech detected.", flush=True)
             except Exception as e:
-                print(f"⚠️ Transcription error: {e}", flush=True)
+                debug_print(f"⚠️ Transcription error: {e}", flush=True)
 
     def start(self, device_index=None):
         if self.running:
@@ -203,7 +215,7 @@ class ContinuousWhisperTranscriber:
         self.stop_time = None
         self.device_index = device_index
         self.running = True
-        print("🚦 Starting recording + transcription...", flush=True)
+        debug_print("🚦 Starting recording + transcription...", flush=True)
         # Start transcribe thread FIRST to ensure it runs
         threading.Thread(target=self._transcribe_loop, daemon=True).start()
 
@@ -218,7 +230,7 @@ class ContinuousWhisperTranscriber:
         threading.Thread(target=self._periodic_suggestions_loop, daemon=True).start()
 
     def stop(self):
-        print("🛑 Stopping transcription", flush=True)
+        debug_print("🛑 Stopping transcription", flush=True)
         self.running = False
         self.stop_time = time.time()
 

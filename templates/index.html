@@ -36,6 +36,14 @@
         <button onclick="exitApp()" style="font-size: 1.2em; padding: 0.6em 1.2em;">Exit</button>
     </p>
 
+    <h2>🛠️ Initial Prompt (Optional)</h2>
+    <div style="margin-bottom: 20px;">
+        <textarea id="initialPrompt" class="output-box" placeholder="Enter prompt to guide Mistral (e.g., meeting agenda, speaker names)..."
+                style="width: 100%; height: 100px;"></textarea>
+        <button onclick="storePrompt()" style="margin-top: 5px;">💾 Save Prompt</button>
+        <span id="promptStatus" style="margin-left: 10px; color: green;"></span>
+    </div>
+
     <!-- Whisper Raw Transcript -->
     <h2>📝 Raw Transcript (Whisper)</h2>
     <pre id="output" class="output-box" style="height: 150px;"></pre>
@@ -70,8 +78,12 @@
         }
 
         function startWithDevice() {
+            storePrompt();
+
             const device = document.getElementById('deviceSelect').value;
+            const prompt = encodeURIComponent(getStoredPrompt());
             console.log("🎛️ Selected device:", device);
+            console.log("📤 Sending prompt:", getStoredPrompt());
 
             document.getElementById('sessionDuration').innerText = "00:00"; // reset
             document.getElementById('recordingIndicator').style.display = 'inline';
@@ -79,8 +91,9 @@
 
             connectSocket();
 
-            fetch('/start?device=' + device)
-                .then(() => console.log("🚀 Backend started"));
+             fetch(`/start?device=${device}&prompt=${prompt}`)
+                .then(() => console.log("🚀 Backend started"))
+                .catch(err => console.error("❌ Failed to start:", err));
         }
 
         function connectSocket() {
@@ -189,23 +202,18 @@
         }
 
         function generateSummary() {
+            const initialPrompt = getStoredPrompt();
             const whisperText = document.getElementById('output').innerText;
             const cleanedText = document.getElementById('mistralTranscript').innerText;
             const suggestions = document.getElementById('mistralSuggestions').innerText;
 
-            const combinedText = `${whisperText}\n\n${cleanedText}\n\n${suggestions}`;
+            const combinedText = `Initial Prompt:\n${initialPrompt} \n\nTranscript (Raw):\n${whisperText} \n\nTranscript (Cleaned):\n${cleanedText} \n\nSuggestions:\n${suggestions}`;
 
             const prompt = `
-        You are an assistant summarizing a transcript from a technical meeting.
-
-        Your task is to:
-        1. Generate a concise summary of what was discussed.
-        2. Extract any action items mentioned.
-        3. Propose clear next steps based on context.
-
-        Transcript:
-        ${combinedText}
-            `;
+                You are an assistant summarizing a transcript from a technical meeting.
+                Your task is to: \n 1. Generate a concise summary of what was discussed. \n 2. Extract any action items mentioned. \n 3. Propose clear next steps based on context.
+                Transcript:
+                ${combinedText}`;
 
             fetch('/generate-summary', {
                 method: 'POST',
@@ -216,7 +224,7 @@
             .then(data => {
                 document.getElementById('summaryBox').innerText = data.summary;
 
-                alert("📄 Summary generated. Check the console.");
+                showToast("📄 Summary generated. Check the console.");
                 console.log("📄 Summary Output:\n", data.summary);
             })
             .catch(err => {
@@ -224,6 +232,55 @@
                 alert("Failed to generate summary. See console.");
             });
         }
+
+        let storedPrompt = "";
+
+        function storePrompt() {
+            const prompt = document.getElementById("initialPrompt").value.trim();
+            if (prompt.length > 0) {
+                storedPrompt = prompt;
+                document.getElementById("promptStatus").textContent = "Prompt saved.";
+                console.log("📥 Prompt stored:", storedPrompt);
+            } else {
+                document.getElementById("promptStatus").textContent = "Prompt cleared.";
+                storedPrompt = "";
+            }
+        }
+
+        function getStoredPrompt() {
+            return storedPrompt;
+        }
+
+        function showToast(message) {
+            const toast = document.createElement("div");
+            toast.textContent = message;
+
+            Object.assign(toast.style, {
+                position: "fixed",
+                bottom: "20px",
+                right: "20px",
+                backgroundColor: "#323232",
+                color: "#fff",
+                padding: "12px 20px",
+                borderRadius: "6px",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+                fontSize: "14px",
+                zIndex: 9999,
+                opacity: 0,
+                transition: "opacity 0.3s ease"
+            });
+
+            document.body.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.style.opacity = 1;
+            });
+
+            setTimeout(() => {
+                toast.style.opacity = 0;
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 3000);
+            }
 
         window.onload = loadDevices;
     </script>
